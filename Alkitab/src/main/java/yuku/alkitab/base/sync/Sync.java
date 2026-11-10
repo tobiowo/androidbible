@@ -1,6 +1,7 @@
 package yuku.alkitab.base.sync;
 
 
+import android.os.SystemClock;
 import androidx.annotation.Keep;
 import androidx.annotation.NonNull;
 import androidx.collection.ArrayMap;
@@ -25,6 +26,7 @@ import okhttp3.RequestBody;
 import yuku.afw.storage.Preferences;
 import yuku.alkitab.base.App;
 import yuku.alkitab.base.connection.Connections;
+import yuku.alkitab.base.model.SyncShadow;
 import yuku.alkitab.base.storage.Prefkey;
 import yuku.alkitab.base.util.AppLog;
 import yuku.alkitab.base.util.Background;
@@ -233,6 +235,23 @@ public class Sync {
         }
 
         SyncKotlin.syncNow(false, requestedSets.toArray(new String[0]));
+    }
+
+    private static final long FOREGROUND_SYNC_MIN_INTERVAL_MS = TimeUnit.MINUTES.toMillis(2);
+    private static long lastForegroundSyncElapsedMs = -1;
+
+    /**
+     * Builds without FCM never hear about changes made on other devices, so they pull them
+     * whenever the reader comes to the foreground. Builds with FCM rely on push and skip this.
+     */
+    public static synchronized void notifyForegroundSyncNeededWithoutPush() {
+        if (!BuildConfig.SKIP_FCM_REGISTRATION) return;
+
+        final long now = SystemClock.elapsedRealtime();
+        if (lastForegroundSyncElapsedMs >= 0 && now - lastForegroundSyncElapsedMs < FOREGROUND_SYNC_MIN_INTERVAL_MS) return;
+        lastForegroundSyncElapsedMs = now;
+
+        notifySyncNeeded(SyncShadow.ALL_SYNC_SET_NAMES);
     }
 
     /**

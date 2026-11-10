@@ -100,6 +100,7 @@ import yuku.alkitab.base.model.MVersionDb
 import yuku.alkitab.base.settings.ExperimentalFlags
 import yuku.alkitab.base.settings.SettingsActivity
 import yuku.alkitab.base.storage.Prefkey
+import yuku.alkitab.base.sync.Sync
 import yuku.alkitab.base.util.AlkitabGptIntegration
 import yuku.alkitab.base.util.AppLog
 import yuku.alkitab.base.util.Appearances
@@ -1254,6 +1255,8 @@ class IsiActivity : BaseLeftDrawerActivity(), LeftDrawer.Text.Listener, VerseAct
 
         // Returning to the reader is the recovery point for a resolution that failed while offline.
         resolveAudioSetsAsync()
+
+        Sync.notifyForegroundSyncNeededWithoutPush()
     }
 
     override fun onDestroy() {
