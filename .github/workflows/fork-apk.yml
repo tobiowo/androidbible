@@ -1,0 +1,55 @@
+name: Fork APK
+
+# Builds an installable plainDebug APK for personal forks. Upstream CI
+# (android.yml) covers tests and the signed production flavors.
+on:
+  push:
+    branches: [ "**" ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  plain-debug-apk:
+    if: github.repository != 'yukuku/androidbible'
+    runs-on: ubuntu-latest
+
+    steps:
+      # Full history: the build derives the dev version name's counter from
+      # `git rev-list --count HEAD`, which a shallow clone reports as 1.
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: set up JDK 21
+        uses: actions/setup-java@v5
+        with:
+          java-version: '21'
+          distribution: 'zulu'
+          cache: gradle
+
+      # Every runner would otherwise generate its own debug key, and Android
+      # refuses to update an installed app with an APK signed by another key.
+      - name: Install fixed debug keystore
+        run: |
+          dir="${ANDROID_USER_HOME:-$HOME/.android}"
+          mkdir -p "$dir"
+          cp .github/fork-debug.keystore "$dir/debug.keystore"
+
+      - name: Build APK
+        run: |
+          chmod +x gradlew
+          ./gradlew assemblePlainDebug
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v7
+        with:
+          name: plain-debug-apk
+          path: Alkitab/build/outputs/apk/plain/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
