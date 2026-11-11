@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<config>
+	<menu
+		devotion="true"
+		songs="true"
+		dictionary="false"
+		guide="false"
+		commentary="false"
+	/>
+
+	<devotions>
+		<devotion name="me-en" />
+	</devotions>
+
+	<internal locale="in" shortName="DDD"      longName="Dummy Debug Data" prefix="ddd"  preset_name='in-ddd' />
+</config>
