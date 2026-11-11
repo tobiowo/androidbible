@@ -16,6 +16,24 @@ object TextColorUtil {
         }
     }
 
+    /** WCAG AA contrast for body text. */
+    private const val MIN_TEXT_CONTRAST = 4.5
+
+    /**
+     * Text color for a highlighted run outside a checked verse. The reading color is kept
+     * whenever it stays legible on [highlightBand]; on a dark page the band is brighter than the
+     * page, so the dim reading color usually gives way to black.
+     */
+    @JvmStatic
+    fun getForHighlight(fontColor: Int, highlightBand: Int): Int {
+        val readingColor = fontColor or 0xff000000.toInt()
+        val band = highlightBand or 0xff000000.toInt()
+        if (ColorUtils.calculateContrast(readingColor, band) >= MIN_TEXT_CONTRAST) return readingColor
+        val black = 0xff000000.toInt()
+        val white = 0xffffffff.toInt()
+        return if (ColorUtils.calculateContrast(black, band) >= ColorUtils.calculateContrast(white, band)) black else white
+    }
+
     @JvmStatic
     fun getForCheckedVerse(checkedVerseBgColor: Int): Int {
         return if (ColorUtils.calculateLuminance(checkedVerseBgColor) > 0.4) {

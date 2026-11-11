@@ -236,14 +236,16 @@ object VerseRenderer {
      * matches the rendered body covers only its stored offsets; otherwise the whole verse body
      * (after the verse-number prefix) is highlighted.
      *
-     * In a checked verse, the run under the band gets its own text color, picked against the
-     * band instead of the selection color used for the rest of the verse.
+     * The run under the band gets its own text color when the reading color is not legible on
+     * the band (a dark page), and in a checked verse, where it is picked against the band
+     * instead of the selection color used for the rest of the verse.
      */
     private fun applyHighlight(sb: SpannableStringBuilder, highlightInfo: Highlights.Info?, startPosAfterVerseNumber: Int, checked: Boolean) {
         if (highlightInfo == null) return
 
         val applied = App.services.uiDimensions.applied()
-        val band = Highlights.blendOver(highlightInfo.colorRgb, applied.backgroundColor)
+        val band = Highlights.bandColor(highlightInfo.colorRgb, applied.backgroundColor)
+        val textColorOnBand = TextColorUtil.getForHighlight(applied.fontColor, band)
 
         val start: Int
         val end: Int
@@ -260,8 +262,11 @@ object VerseRenderer {
         sb.setSpan(BackgroundColorSpan(band), start, end, 0)
         if (checked) {
             val selectedVerseBgColor = Preferences.getInt(R.string.pref_selectedVerseBgColor_key, R.integer.pref_selectedVerseBgColor_default)
-            val textColor = TextColorUtil.getForCheckedVerseHighlight(applied.fontColor, selectedVerseBgColor, applied.backgroundColor, band)
+            val textColor = TextColorUtil.getForCheckedVerseHighlight(textColorOnBand, selectedVerseBgColor, applied.backgroundColor, band)
             sb.setSpan(ForegroundColorSpan(textColor), start, end, 0)
+        } else if (textColorOnBand != applied.fontColor or 0xff000000.toInt()) {
+            // Only when needed: a span here also overrides red-letter and link colors under the band.
+            sb.setSpan(ForegroundColorSpan(textColorOnBand), start, end, 0)
         }
     }
 

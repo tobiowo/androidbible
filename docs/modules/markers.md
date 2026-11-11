@@ -43,7 +43,9 @@ Highlights use a JSON encoding in the `caption` field supporting:
 - Partial highlights (character range within a verse)
 - Hash-based verification to detect when verse text has changed
 
-The `Highlights` utility handles encoding/decoding and color management. `Highlights.alphaMix()` masks the input to 24-bit RGB before OR-ing the fixed alpha, so callers may pass either RGB or pre-tinted ARGB ints and the output alpha is always `0xA0`.
+The `Highlights` utility handles encoding/decoding and color management. A highlight stores the RGB the user picked, but is not drawn in that color. `Highlights.bandColor()` keeps only its hue and takes lightness and chroma from the reading background: soft pastels on a light page, mid-tone bands on a dark one. `TextColorUtil.getForHighlight()` then keeps the reading color on the band when it stays at 4.5:1 contrast, and otherwise switches to black or white, which in practice means black text on night-mode bands. Because the stored color is unchanged, other installs that sync the same highlight can draw it their own way.
+
+`TypeHighlightDialog` offers six presets (yellow, orange, pink, purple, teal, green) chosen to stay distinct once drawn as bands. Only hue survives into the band, and pastel blue and violet look alike, so there is no separate blue. Highlights stored in any other color, from older presets or the custom picker, still draw through `bandColor()`.
 
 Color selection in `TypeHighlightDialog` and the label color editor uses the iOS-style Compose color picker at `yuku.alkitab.base.compose.colorpicker.IosColorPicker` / `ColorPickerDialog`, hosted inside a `ModalBottomSheet`.
 

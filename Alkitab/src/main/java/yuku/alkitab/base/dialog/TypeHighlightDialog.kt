@@ -53,6 +53,7 @@ import yuku.alkitab.base.App
 import yuku.alkitab.base.compose.ComposeBottomSheetHost
 import yuku.alkitab.base.compose.colorpicker.ColorPickerDialog
 import yuku.alkitab.base.util.Highlights
+import yuku.alkitab.base.util.TextColorUtil
 import yuku.alkitab.debug.R
 import yuku.alkitab.util.Ari
 import yuku.alkitab.util.IntArrayList
@@ -189,10 +190,14 @@ class TypeHighlightDialog {
     }
 
     companion object {
-        /** Preset colors (rgb without alpha). Order matches the on-screen swatch layout. */
+        /**
+         * Preset colors (rgb without alpha), in on-screen order: yellow, orange, pink, purple,
+         * teal, green. Bands keep only the hue (see [Highlights.bandColor]), so these are picked
+         * to stay apart as pastels, where sRGB has little chroma left for blue and violet: a blue
+         * next to the purple would draw as a second lavender.
+         */
         internal val PRESET_RGBS = intArrayOf(
-            0xff0000, 0xff8000, 0xffff00, 0x80ff00, 0x00ff00, 0x00ff80,
-            0x00ffff, 0x0080ff, 0x0000ff, 0x8000ff, 0xff00ff, 0xff0080,
+            0xffff00, 0xff8000, 0xff0080, 0x8000ff, 0x00ffff, 0x00ff00,
         )
     }
 }
@@ -319,16 +324,17 @@ private fun VerseTextSelectable(
 ) {
     val applied = App.services.uiDimensions.applied()
     val backgroundColor = applied.backgroundColor
-    val transformation = remember(highlightColorRgb, highlightRange, backgroundColor) {
+    val transformation = remember(highlightColorRgb, highlightRange, backgroundColor, applied.fontColor) {
         if (highlightColorRgb == null || highlightRange == null) {
             VisualTransformation.None
         } else {
-            val blended = Color(Highlights.blendOver(highlightColorRgb, backgroundColor))
+            val band = Highlights.bandColor(highlightColorRgb, backgroundColor)
+            val bandStyle = SpanStyle(color = Color(TextColorUtil.getForHighlight(applied.fontColor, band)), background = Color(band))
             VisualTransformation { text ->
                 val start = minOf(highlightRange.first, highlightRange.second).coerceIn(0, text.length)
                 val end = maxOf(highlightRange.first, highlightRange.second).coerceIn(start, text.length)
                 val styled = AnnotatedString.Builder(text)
-                    .apply { addStyle(SpanStyle(background = blended), start, end) }
+                    .apply { addStyle(bandStyle, start, end) }
                     .toAnnotatedString()
                 TransformedText(styled, OffsetMapping.Identity)
             }
@@ -358,30 +364,18 @@ private fun PresetColorGrid(
     onColorPicked: (Int) -> Unit,
 ) {
     val rgbs = TypeHighlightDialog.PRESET_RGBS
-    val rowsLayout = listOf(
-        listOf(0, 1, 2, 3, 4, 5),
-        listOf(11, 10, 9, 8, 7, 6),
-    )
-    Column(
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        rowsLayout.forEach { row ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                row.forEach { idx ->
-                    val rgb = rgbs[idx]
-                    val isSelected = (rgb and 0xffffff) == (selectedColorRgb and 0xffffff)
-                    ColorSwatch(
-                        rgb = rgb,
-                        selected = isSelected,
-                        onClick = { onColorPicked(rgb) },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
+        rgbs.forEach { rgb ->
+            val isSelected = (rgb and 0xffffff) == (selectedColorRgb and 0xffffff)
+            ColorSwatch(
+                rgb = rgb,
+                selected = isSelected,
+                onClick = { onColorPicked(rgb) },
+                modifier = Modifier.weight(1f),
+            )
         }
     }
 }
@@ -398,8 +392,7 @@ private fun ColorSwatch(
         modifier = modifier
             .height(44.dp)
             .clip(RoundedCornerShape(6.dp))
-            .background(Color(backgroundColor))
-            .background(Color(Highlights.blendOver(rgb, backgroundColor)))
+            .background(Color(Highlights.bandColor(rgb, backgroundColor)))
             .border(
                 width = if (selected) 3.dp else 0.5.dp,
                 color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,

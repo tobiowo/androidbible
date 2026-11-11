@@ -263,16 +263,21 @@ object VerseRendererCompose {
     }
 
     /**
-     * In a checked verse, the run under the band gets its own text color, picked against the
-     * band instead of the selection color used for the rest of the verse.
+     * The run under the band gets its own text color when the reading color is not legible on
+     * the band (a dark page), and in a checked verse, where it is picked against the band
+     * instead of the selection color used for the rest of the verse.
      */
     private fun applyHighlight(text: AnnotatedString, highlightInfo: Highlights.Info?, startPosAfterVerseNumber: Int, checked: Boolean): AnnotatedString {
         if (highlightInfo == null) return text
         val applied = App.services.uiDimensions.applied()
-        val band = Highlights.blendOver(highlightInfo.colorRgb, applied.backgroundColor)
+        val band = Highlights.bandColor(highlightInfo.colorRgb, applied.backgroundColor)
+        val textColorOnBand = TextColorUtil.getForHighlight(applied.fontColor, band)
         val textColor = if (checked) {
             val selectedVerseBgColor = Preferences.getInt(R.string.pref_selectedVerseBgColor_key, R.integer.pref_selectedVerseBgColor_default)
-            Color(TextColorUtil.getForCheckedVerseHighlight(applied.fontColor, selectedVerseBgColor, applied.backgroundColor, band))
+            Color(TextColorUtil.getForCheckedVerseHighlight(textColorOnBand, selectedVerseBgColor, applied.backgroundColor, band))
+        } else if (textColorOnBand != applied.fontColor or 0xff000000.toInt()) {
+            // Only when needed: a color here also overrides red-letter and link colors under the band.
+            Color(textColorOnBand)
         } else {
             Color.Unspecified
         }

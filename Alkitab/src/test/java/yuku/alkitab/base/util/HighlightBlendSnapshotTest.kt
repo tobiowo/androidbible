@@ -6,6 +6,7 @@ import android.graphics.Paint
 import android.graphics.Typeface
 import android.text.SpannableStringBuilder
 import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
 import android.text.style.TypefaceSpan
 import android.util.TypedValue
 import android.view.View
@@ -26,16 +27,16 @@ import yuku.afw.App as AfwApp
  * Visual matrix of every highlight color drawn over a range of reading backgrounds.
  *
  * Each background gets two renderings of the same rows. The left one fills the band with a
- * constant 0xA0 alpha; the right one uses [Highlights.blendOver], which solves the alpha per
- * (color, background) pair. Putting them next to each other is the point of the test: it shows
- * where a constant alpha turns unreadable (a saturated blue on a light page, anything bright on
- * the black night page) and where the two agree because the color already sits near the
- * background.
+ * constant 0xA0 alpha; the right one draws what the reader draws: the band from
+ * [Highlights.bandColor] and the text color from [TextColorUtil.getForHighlight]. Putting them
+ * next to each other shows where a constant alpha turns unreadable or muddy (a saturated blue on
+ * a light page, anything on the black night page) against bands that keep one lightness per
+ * page and differ only in hue.
  *
  * Per-background PNGs, a combined `contact-sheet.png`, and an `index.html` land in
  * `Alkitab/build/snapshots/highlight-blend/`.
  * Nothing is pixel-compared: the test asserts only that the report was produced, and exists so
- * the blend can be eyeballed after any change to [Highlights.blendOver]'s constants.
+ * the bands can be eyeballed after any change to [Highlights.bandColor]'s constants.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(application = AfwApp::class, sdk = [34], qualifiers = "w720dp-h1280dp-mdpi")
@@ -129,12 +130,12 @@ class HighlightBlendSnapshotTest {
             </style></head>
             <body>
             <h1>Highlight color × reading background</h1>
-            <p>Left: a constant 0xA0 alpha for every pair. Right: <code>Highlights.blendOver</code>, which
-            solves the alpha so the band sits a fixed perceptual (Oklab) distance from the background,
-            floored by a minimum raw sRGB separation so it stays visible on dark pages. The
-            <code>a=</code> figure on each row is the alpha that was used.</p>
+            <p>Left: a constant 0xA0 alpha for every pair. Right: <code>Highlights.bandColor</code>, which
+            keeps only the hue of the highlight color and takes lightness and chroma from the page, with
+            the text color from <code>TextColorUtil.getForHighlight</code>. The figure on each row is the
+            band color that was drawn.</p>
             <table>
-              <thead><tr><th>Background</th><th>Constant 0xA0 alpha</th><th>blendOver</th></tr></thead>
+              <thead><tr><th>Background</th><th>Constant 0xA0 alpha</th><th>bandColor</th></tr></thead>
               <tbody>
             $rows
               </tbody>
@@ -178,7 +179,7 @@ class HighlightBlendSnapshotTest {
         }
 
         canvas.drawText("constant 0xA0 alpha", gutter.toFloat(), 28f, title)
-        canvas.drawText("blendOver", (gutter + WIDTH_PX + gutter).toFloat(), 28f, title)
+        canvas.drawText("bandColor", (gutter + WIDTH_PX + gutter).toFloat(), 28f, title)
 
         var y = headerHeight + blockGap
         for ((background, flat, blend) in pairs) {
@@ -213,18 +214,25 @@ class HighlightBlendSnapshotTest {
             if (index > 0) sb.append("\n")
 
             val argb = if (blended) {
-                Highlights.blendOver(swatch.rgb, background.rgb)
+                Highlights.bandColor(swatch.rgb, background.rgb)
             } else {
                 (FLAT_ALPHA shl 24) or swatch.rgb
             }
 
             val labelStart = sb.length
-            sb.append("#%06x a=%02x ".format(swatch.rgb, (argb ushr 24) and 0xff))
+            if (blended) {
+                sb.append("#%06x→%06x ".format(swatch.rgb, argb and 0xffffff))
+            } else {
+                sb.append("#%06x a=%02x ".format(swatch.rgb, (argb ushr 24) and 0xff))
+            }
             sb.setSpan(TypefaceSpan("monospace"), labelStart, sb.length, 0)
 
             val bandStart = sb.length
             sb.append(SAMPLE)
             sb.setSpan(BackgroundColorSpan(argb), bandStart, sb.length, 0)
+            if (blended) {
+                sb.setSpan(ForegroundColorSpan(TextColorUtil.getForHighlight(background.textColor, argb)), bandStart, sb.length, 0)
+            }
         }
 
         val view = TextView(ApplicationProvider.getApplicationContext()).apply {

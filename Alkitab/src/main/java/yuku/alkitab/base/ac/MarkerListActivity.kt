@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.text.SpannableStringBuilder
 import android.text.TextUtils
 import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.Menu
 import android.view.MenuItem
@@ -700,11 +701,16 @@ class MarkerListActivity : BaseActivity() {
                             val verseText = legacyVerseText()
                             val hilited = if (hiliteTokens != null) SearchEngine.hilite(verseText, hiliteTokens, hiliteColor) else SpannableStringBuilder(verseText)
                             if (info != null) {
-                                val span = BackgroundColorSpan(Highlights.blendOver(info.colorRgb, App.services.uiDimensions.applied().backgroundColor))
-                                if (info.shouldRenderAsPartialForVerseText(verseText)) {
-                                    hilited.setSpan(span, info.partial!!.startOffset, info.partial!!.endOffset, 0)
+                                val applied = App.services.uiDimensions.applied()
+                                val band = Highlights.bandColor(info.colorRgb, applied.backgroundColor)
+                                val (start, end) = if (info.shouldRenderAsPartialForVerseText(verseText)) {
+                                    info.partial!!.startOffset to info.partial!!.endOffset
                                 } else {
-                                    hilited.setSpan(span, 0, hilited.length, 0)
+                                    0 to hilited.length
+                                }
+                                hilited.setSpan(BackgroundColorSpan(band), start, end, 0)
+                                if (!checked) {
+                                    hilited.setSpan(ForegroundColorSpan(TextColorUtil.getForHighlight(applied.fontColor, band)), start, end, 0)
                                 }
                             }
                             lSnippet.text = hilited

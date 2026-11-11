@@ -7,6 +7,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import yuku.alkitab.base.dialog.TypeHighlightDialog
 
 /**
  * Unit tests for [Highlights] — encoding/decoding of highlight state and the
@@ -204,88 +205,19 @@ class HighlightsTest {
 
     // endregion
 
-    // region blendOver
+    // region bandColor
+
+    private val LIGHT_PAGE = 0xf0f0f0
+    private val NIGHT_PAGE = 0x000000
 
     private fun alphaOf(argb: Int) = (argb ushr 24) and 0xff
 
-    private fun rgbOf(argb: Int) = argb and 0xffffff
-
-    /** Alpha-composite [argb] onto [bg], the same way a BackgroundColorSpan is drawn. */
-    private fun composite(argb: Int, bg: Int): Int {
-        val a = alphaOf(argb) / 255f
-        var res = 0
-        for (shift in intArrayOf(16, 8, 0)) {
-            val c = (argb shr shift) and 0xff
-            val b = (bg shr shift) and 0xff
-            res = res or ((a * c + (1f - a) * b + 0.5f).toInt().coerceIn(0, 0xff) shl shift)
+    private fun luminance(rgb: Int): Double {
+        fun channel(shift: Int): Double {
+            val c = ((rgb shr shift) and 0xff) / 255.0
+            return if (c <= 0.04045) c / 12.92 else Math.pow((c + 0.055) / 1.055, 2.4)
         }
-        return res
-    }
-
-    @Test
-    fun `blendOver preserves the input RGB bits and ignores any alpha bits the caller passes`() {
-        val bg = 0xf0f0f0
-
-        assertEquals(0x123456, rgbOf(Highlights.blendOver(0x123456, bg)))
-        assertEquals(0x000000, rgbOf(Highlights.blendOver(0x000000, bg)))
-        assertEquals(0xffffff, rgbOf(Highlights.blendOver(0xffffff, bg)))
-        assertEquals(
-            Highlights.blendOver(0x123456, bg),
-            Highlights.blendOver(0xff123456.toInt(), bg),
-        )
-    }
-
-    @Test
-    fun `blendOver is fully opaque when the highlight color is the background color`() {
-        assertEquals(0xff, alphaOf(Highlights.blendOver(0xf0f0f0, 0xf0f0f0)))
-        assertEquals(0xff, alphaOf(Highlights.blendOver(0x000000, 0x000000)))
-    }
-
-    @Test
-    fun `blendOver applies a color that barely differs from the background at close to full strength`() {
-        assertTrue(alphaOf(Highlights.blendOver(0xe8e8e8, 0xf0f0f0)) > 0xe0)
-        assertTrue(alphaOf(Highlights.blendOver(0x101010, 0x000000)) > 0xe0)
-    }
-
-    @Test
-    fun `blendOver gets more transparent the further the highlight color sits from the background`() {
-        val bg = 0xffffff
-        val yellow = alphaOf(Highlights.blendOver(0xffff00, bg))
-        val red = alphaOf(Highlights.blendOver(0xff0000, bg))
-        val blue = alphaOf(Highlights.blendOver(0x0000ff, bg))
-
-        assertTrue("yellow ($yellow) sits nearest to white, so it stays the most opaque", yellow > red)
-        assertTrue("red ($red) sits nearer to white than blue ($blue) does", red > blue)
-    }
-
-    @Test
-    fun `blendOver picks a different alpha for the same color depending on the background it covers`() {
-        assertNotEquals(
-            alphaOf(Highlights.blendOver(0xffff00, 0xffffff)),
-            alphaOf(Highlights.blendOver(0xffff00, 0x000000)),
-        )
-    }
-
-    @Test
-    fun `blendOver keeps every preset color separated from a black background by the sRGB floor`() {
-        for (rgb in intArrayOf(0xff0000, 0xff8000, 0xffff00, 0x00ff00, 0x00ffff, 0x0000ff, 0xff00ff)) {
-            val band = composite(Highlights.blendOver(rgb, 0x000000), 0x000000)
-            val separation = distance(band, 0x000000)
-            assertTrue(
-                "%06x on black composited to %06x, only %.3f away".format(rgb, band, separation),
-                separation > 0.28f,
-            )
-        }
-    }
-
-    @Test
-    fun `blendOver lands a bright color on a dark background far below the strength it needs on a light one`() {
-        for (rgb in intArrayOf(0xffff00, 0x00ffff, 0x00ff00)) {
-            assertTrue(
-                "%06x should be applied much more thinly on black than on white".format(rgb),
-                alphaOf(Highlights.blendOver(rgb, 0x000000)) < alphaOf(Highlights.blendOver(rgb, 0xffffff)),
-            )
-        }
+        return 0.2126 * channel(16) + 0.7152 * channel(8) + 0.0722 * channel(0)
     }
 
     private fun distance(x: Int, y: Int): Float {
@@ -295,6 +227,61 @@ class HighlightsTest {
             sum += d * d
         }
         return kotlin.math.sqrt(sum)
+    }
+
+    @Test
+    fun `bandColor is always opaque and ignores any alpha bits the caller passes`() {
+        for (bg in intArrayOf(LIGHT_PAGE, NIGHT_PAGE)) {
+            assertEquals(0xff, alphaOf(Highlights.bandColor(0x123456, bg)))
+            assertEquals(Highlights.bandColor(0x123456, bg), Highlights.bandColor(0xff123456.toInt(), bg))
+        }
+    }
+
+    @Test
+    fun `bandColor draws a highlight color without a hue as a neutral grey band`() {
+        for (rgb in intArrayOf(0x000000, 0x808080, 0xffffff)) {
+            val band = Highlights.bandColor(rgb, LIGHT_PAGE) and 0xffffff
+            assertEquals("%06x".format(band), (band shr 16) and 0xff, band and 0xff)
+            assertEquals("%06x".format(band), (band shr 8) and 0xff, band and 0xff)
+        }
+    }
+
+    @Test
+    fun `bandColor sits a little darker than a light page so the band reads as a soft tint`() {
+        for (rgb in TypeHighlightDialog.PRESET_RGBS) {
+            val band = Highlights.bandColor(rgb, LIGHT_PAGE) and 0xffffff
+            assertTrue("%06x -> %06x is not darker than the page".format(rgb, band), luminance(band) < luminance(LIGHT_PAGE))
+            assertTrue("%06x -> %06x is too dark for a tint".format(rgb, band), luminance(band) > 0.5)
+        }
+    }
+
+    @Test
+    fun `bandColor lifts every preset well clear of the black night page instead of fading into it`() {
+        for (rgb in TypeHighlightDialog.PRESET_RGBS) {
+            val band = Highlights.bandColor(rgb, NIGHT_PAGE) and 0xffffff
+            assertTrue("%06x -> %06x barely shows on black".format(rgb, band), luminance(band) > 0.15)
+        }
+    }
+
+    @Test
+    fun `bandColor keeps the presets clearly apart from each other on both default pages`() {
+        for (bg in intArrayOf(LIGHT_PAGE, NIGHT_PAGE)) {
+            val bands = TypeHighlightDialog.PRESET_RGBS.map { Highlights.bandColor(it, bg) and 0xffffff }
+            for (i in bands.indices) for (j in i + 1 until bands.size) {
+                assertTrue(
+                    "on %06x, %06x and %06x are too alike".format(bg, bands[i], bands[j]),
+                    distance(bands[i], bands[j]) > 0.12f,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `bandColor follows a custom page color instead of assuming white or black`() {
+        val sepia = 0xfff8e7
+        val band = Highlights.bandColor(0xffff00, sepia) and 0xffffff
+        assertTrue(luminance(band) < luminance(sepia))
+        assertNotEquals(Highlights.bandColor(0xffff00, LIGHT_PAGE), Highlights.bandColor(0xffff00, NIGHT_PAGE))
     }
 
     // endregion

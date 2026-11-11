@@ -502,7 +502,7 @@ class VerseRendererTest {
         // The background must start after "1  " (the verse-number prefix), not at 0.
         assertEquals(3, sb.getSpanStart(bgs[0]))
         assertEquals(sb.length, sb.getSpanEnd(bgs[0]))
-        assertEquals(Highlights.blendOver(0x00ff00, BACKGROUND), bgs[0].backgroundColor)
+        assertEquals(Highlights.bandColor(0x00ff00, BACKGROUND), bgs[0].backgroundColor)
     }
 
     @Test
@@ -566,7 +566,7 @@ class VerseRendererTest {
         // the blue selection alone would force.
         assertEquals(FONT_COLOR, fgs[0].foregroundColor)
         assertEquals(
-            TextColorUtil.getForCheckedVerseHighlight(FONT_COLOR, 0xff0277bd.toInt(), BACKGROUND, Highlights.blendOver(0xffff00, BACKGROUND)),
+            TextColorUtil.getForCheckedVerseHighlight(FONT_COLOR, 0xff0277bd.toInt(), BACKGROUND, Highlights.bandColor(0xffff00, BACKGROUND)),
             fgs[0].foregroundColor,
         )
     }

@@ -3,21 +3,30 @@ package yuku.alkitab.base.util
 import androidx.annotation.Keep
 import com.google.gson.JsonSyntaxException
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.math.atan2
 import kotlin.math.cbrt
+import kotlin.math.cos
 import kotlin.math.pow
+import kotlin.math.sin
 import kotlin.math.sqrt
 import yuku.alkitab.base.App
 
 object Highlights {
     private val TAG: String = Highlights::class.java.simpleName
 
-    /** Perceptual (Oklab) distance a highlight band aims to sit from the background it covers. */
-    private const val TARGET_DELTA = 0.22f
+    /** Oklab lightness of a band on a light page, capped [LIGHT_PAGE_BAND_GAP] below the page itself. */
+    private const val LIGHT_PAGE_BAND_LIGHTNESS = 0.88f
+    private const val LIGHT_PAGE_BAND_GAP = 0.06f
+    private const val LIGHT_PAGE_BAND_CHROMA = 0.12f
 
-    /** Smallest raw sRGB separation the band may keep from the background, channels scaled to 0..1. */
-    private const val MIN_SRGB_DELTA = 0.30f
+    /** Oklab lightness of a band on a dark page, bright enough that the text on it switches to dark. */
+    private const val DARK_PAGE_BAND_LIGHTNESS = 0.66f
+    private const val DARK_PAGE_BAND_CHROMA = 0.13f
 
-    private val blendCache = ConcurrentHashMap<Long, Int>()
+    /** Below this Oklab chroma a stored color has no meaningful hue and draws as a neutral band. */
+    private const val NEUTRAL_CHROMA = 0.02f
+
+    private val bandCache = ConcurrentHashMap<Long, Int>()
 
     private val tmpInfo: ThreadLocal<Info> = ThreadLocal.withInitial { Info() }
 
@@ -102,64 +111,74 @@ object Highlights {
     }
 
     /**
-     * Alpha-premixed highlight color, ready to draw over [backgroundColor].
+     * Opaque color of the band drawn behind highlighted text on [backgroundColor].
      *
-     * The alpha is solved so the highlighted band lands a fixed perceptual distance
-     * ([TARGET_DELTA], measured in Oklab) away from the background it is drawn on. A color far
-     * from the background (saturated blue on white) therefore needs very little alpha, while a
-     * color close to it gets as much as it needs, up to fully opaque.
+     * Only the hue of [colorRgb] is kept. Lightness and chroma come from the page: soft pastels on
+     * a light page, and mid-tone bands on a dark page, where they need dark text (see
+     * [TextColorUtil.getForHighlight]). Saturated colors of different hues blended at the
+     * strengths a page allows otherwise end up looking alike, and on a black page nearly invisible.
      *
-     * [MIN_SRGB_DELTA] then floors the result. Oklab expands distances near black far beyond what
-     * a screen in a lit room can resolve, so on a dark background the solved alpha alone would
-     * leave the band invisible.
+     * The stored color is never changed, so other installs syncing the same highlight are free to
+     * draw it their own way.
      */
     @JvmStatic
-    fun blendOver(colorRgb: Int, backgroundColor: Int): Int {
+    fun bandColor(colorRgb: Int, backgroundColor: Int): Int {
         val rgb = colorRgb and 0xffffff
         val bg = backgroundColor and 0xffffff
-        if (blendCache.size > 512) blendCache.clear()
-        val alpha = blendCache.getOrPut((rgb.toLong() shl 32) or bg.toLong()) { solveAlpha(rgb, bg) }
-        return (alpha shl 24) or rgb
+        if (bandCache.size > 512) bandCache.clear()
+        return bandCache.getOrPut((rgb.toLong() shl 32) or bg.toLong()) { solveBand(rgb, bg) }
     }
 
-    private fun solveAlpha(rgb: Int, bg: Int): Int {
-        val srgbDelta = srgbDistance(rgb, bg)
-        if (srgbDelta == 0f) return 0xff
+    private fun solveBand(rgb: Int, bg: Int): Int {
+        val pageLightness = oklab(bg).l
+        val isDarkPage = pageLightness < 0.5f
+        val lightness = if (isDarkPage) DARK_PAGE_BAND_LIGHTNESS else minOf(LIGHT_PAGE_BAND_LIGHTNESS, pageLightness - LIGHT_PAGE_BAND_GAP)
 
-        val bgLab = oklab(bg)
-        val alpha = if (oklabDistance(oklab(rgb), bgLab) <= TARGET_DELTA) {
-            1f
-        } else {
+        val color = oklab(rgb)
+        val colorChroma = sqrt(color.a * color.a + color.b * color.b)
+        val hue = atan2(color.b, color.a)
+        val targetChroma = when {
+            colorChroma < NEUTRAL_CHROMA -> 0f
+            isDarkPage -> DARK_PAGE_BAND_CHROMA
+            else -> LIGHT_PAGE_BAND_CHROMA
+        }
+
+        // The most saturated color of this hue and lightness that sRGB can show, up to the target.
+        // Chroma 0 is always in gamut, so the search always lands on a displayable color.
+        var chroma = targetChroma
+        if (oklabToLinearRgb(lightness, chroma * cos(hue), chroma * sin(hue)) == null) {
             var lo = 0f
-            var hi = 1f
+            var hi = chroma
             repeat(16) {
                 val mid = (lo + hi) / 2f
-                if (oklabDistance(oklab(srcOver(rgb, bg, mid)), bgLab) < TARGET_DELTA) lo = mid else hi = mid
+                if (oklabToLinearRgb(lightness, mid * cos(hue), mid * sin(hue)) != null) lo = mid else hi = mid
             }
-            (lo + hi) / 2f
+            chroma = lo
         }
-
-        // srcOver is linear in alpha, so the alpha reaching MIN_SRGB_DELTA is exact rather than solved.
-        val floor = (MIN_SRGB_DELTA / srgbDelta).coerceAtMost(1f)
-        return (maxOf(alpha, floor) * 255f + 0.5f).toInt().coerceIn(0, 0xff)
+        val linear = oklabToLinearRgb(lightness, chroma * cos(hue), chroma * sin(hue))!!
+        return (0xff shl 24) or (linearToSrgb(linear[0]) shl 16) or (linearToSrgb(linear[1]) shl 8) or linearToSrgb(linear[2])
     }
 
-    private fun srgbDistance(x: Int, y: Int): Float {
-        val dr = (((x shr 16) and 0xff) - ((y shr 16) and 0xff)) / 255f
-        val dg = (((x shr 8) and 0xff) - ((y shr 8) and 0xff)) / 255f
-        val db = ((x and 0xff) - (y and 0xff)) / 255f
-        return sqrt(dr * dr + dg * dg + db * db)
+    /** Linear sRGB for an Oklab color, or null if it falls outside the sRGB gamut. */
+    private fun oklabToLinearRgb(l: Float, a: Float, b: Float): FloatArray? {
+        val lCone = l + 0.39633778f * a + 0.21580376f * b
+        val mCone = l - 0.105561346f * a - 0.06385417f * b
+        val sCone = l - 0.08948418f * a - 1.2914855f * b
+        val lc = lCone * lCone * lCone
+        val mc = mCone * mCone * mCone
+        val sc = sCone * sCone * sCone
+        val res = floatArrayOf(
+            4.0767417f * lc - 3.3077116f * mc + 0.23096994f * sc,
+            -1.268438f * lc + 2.6097574f * mc - 0.34131938f * sc,
+            -0.0041960864f * lc - 0.7034186f * mc + 1.7076147f * sc,
+        )
+        return if (res.all { it in -1e-4f..1.0001f }) res else null
     }
 
-    private fun srcOver(rgb: Int, bg: Int, alpha: Float): Int {
-        var res = 0
-        for (shift in intArrayOf(16, 8, 0)) {
-            val c = (rgb shr shift) and 0xff
-            val b = (bg shr shift) and 0xff
-            val v = (alpha * c + (1f - alpha) * b + 0.5f).toInt().coerceIn(0, 0xff)
-            res = res or (v shl shift)
-        }
-        return res
+    private fun linearToSrgb(v: Float): Int {
+        val c = v.coerceIn(0f, 1f)
+        val s = if (c <= 0.0031308f) c * 12.92f else 1.055f * c.pow(1f / 2.4f) - 0.055f
+        return (s * 255f + 0.5f).toInt().coerceIn(0, 0xff)
     }
 
     private class Oklab(val l: Float, val a: Float, val b: Float)
@@ -183,13 +202,6 @@ object Highlights {
     private fun srgbToLinear(component: Int): Float {
         val c = component / 255f
         return if (c <= 0.04045f) c / 12.92f else ((c + 0.055f) / 1.055f).pow(2.4f)
-    }
-
-    private fun oklabDistance(x: Oklab, y: Oklab): Float {
-        val dl = x.l - y.l
-        val da = x.a - y.a
-        val db = x.b - y.b
-        return sqrt(dl * dl + da * da + db * db)
     }
 
     @JvmStatic

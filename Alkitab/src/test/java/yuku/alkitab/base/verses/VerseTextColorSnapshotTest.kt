@@ -332,14 +332,15 @@ class VerseTextColorSnapshotTest {
         val rest = "rest #%06x %.1f:1".format(restText and 0xffffff, ColorUtils.calculateContrast(restText, restBackground))
 
         val highlight = row.highlight ?: return rest
-        val band = Highlights.blendOver(highlight.rgb, theme.background)
+        val band = Highlights.bandColor(highlight.rgb, theme.background)
         val painted = ColorUtils.compositeColors(band, restBackground)
+        val textOnBand = TextColorUtil.getForHighlight(theme.fontColor, band)
         val bandText = if (row.checked) {
-            TextColorUtil.getForCheckedVerseHighlight(theme.fontColor, selectionArgb, theme.background, band)
+            TextColorUtil.getForCheckedVerseHighlight(textOnBand, selectionArgb, theme.background, band)
         } else {
-            theme.fontColor
+            textOnBand
         }
-        return "band a=%02x text #%06x %.1f:1   %s".format((band ushr 24) and 0xff, bandText and 0xffffff, ColorUtils.calculateContrast(bandText, painted), rest)
+        return "band #%06x text #%06x %.1f:1   %s".format(band and 0xffffff, bandText and 0xffffff, ColorUtils.calculateContrast(bandText, painted), rest)
     }
 
     private fun buildData(): VersesDataModel {

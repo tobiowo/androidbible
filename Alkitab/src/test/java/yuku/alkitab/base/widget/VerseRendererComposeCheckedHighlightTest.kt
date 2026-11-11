@@ -59,7 +59,7 @@ class VerseRendererComposeCheckedHighlightTest {
             checked = true,
         )
 
-        val band = Highlights.blendOver(0xffff00, BACKGROUND)
+        val band = Highlights.bandColor(0xffff00, BACKGROUND)
         val bandStyles = result.text.spanStyles.filter { it.item.background == Color(band) }
         assertEquals(1, bandStyles.size)
         assertEquals(3, bandStyles[0].start)
@@ -80,7 +80,7 @@ class VerseRendererComposeCheckedHighlightTest {
             checked = false,
         )
 
-        val band = Highlights.blendOver(0xffff00, BACKGROUND)
+        val band = Highlights.bandColor(0xffff00, BACKGROUND)
         val bandStyles = result.text.spanStyles.filter { it.item.background == Color(band) }
         assertEquals(1, bandStyles.size)
         assertEquals(Color.Unspecified, bandStyles[0].item.color)
