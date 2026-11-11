@@ -35,16 +35,26 @@ jobs:
 
       # Every runner would otherwise generate its own debug key, and Android
       # refuses to update an installed app with an APK signed by another key.
-      - name: Install fixed debug keystore
-        run: |
-          dir="${ANDROID_USER_HOME:-$HOME/.android}"
-          mkdir -p "$dir"
-          cp .github/fork-debug.keystore "$dir/debug.keystore"
-
       - name: Build APK
         run: |
           chmod +x gradlew
-          ./gradlew assemblePlainDebug
+          ./gradlew assemblePlainDebug \
+            -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/.github/fork-debug.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
+
+      # An APK signed with any other key installs as a new app or fails to update the old one, so
+      # a wrong key fails the build instead of producing an artifact that cannot be installed.
+      - name: Verify signing certificate
+        run: |
+          apksigner="$(ls -d "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)"
+          apk="$(ls Alkitab/build/outputs/apk/plain/debug/*.apk | head -1)"
+          expected="$(keytool -list -v -keystore .github/fork-debug.keystore -storepass android | sed -n 's/.*SHA256: //p' | tr -d ':' | tr 'A-Z' 'a-z')"
+          actual="$("$apksigner" verify --print-certs "$apk" | sed -n 's/.*certificate SHA-256 digest: //p' | head -1)"
+          echo "expected $expected"
+          echo "actual   $actual"
+          test -n "$expected" && test "$expected" = "$actual"
 
       - name: Upload APK
         uses: actions/upload-artifact@v7
