@@ -145,7 +145,10 @@ jobs:
     # GitHub does not expose repository secrets to PRs from forks (by design),
     # so signed builds only run for: pushes to develop, and PRs from branches
     # inside this same repo. Fork PRs skip this job cleanly.
-    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
+    # The job also needs the proprietary overlay repository and the signing
+    # secrets, which exist only in the upstream repository, so personal forks
+    # skip it as well. pr-apk-preview needs this job and is skipped with it.
+    if: github.repository == 'yukuku/androidbible' && (github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-latest
     # `contents: write` is required by the "Create GitHub Pre-Release" step
     # below (gh release create). Overrides the workflow-level read-only default.
