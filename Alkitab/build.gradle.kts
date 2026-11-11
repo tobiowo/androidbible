@@ -150,6 +150,13 @@ val versionStage: String = providers.gradleProperty("versionStage").orNull
     ?: providers.environmentVariable("VERSION_STAGE").orNull
     ?: "dev"
 
+// Debug builds rotate the daily verse widget every 15 seconds so a change to it can be seen
+// without waiting a day. -PdailyVerseFastRotation=false turns that off for a debug build that
+// is used rather than developed.
+val dailyVerseFastRotation: String = providers.gradleProperty("dailyVerseFastRotation").orNull
+    ?.also { if (it != "true" && it != "false") throw GradleException("dailyVerseFastRotation must be 'true' or 'false', not '$it'.") }
+    ?: "true"
+
 val buildVersionName: String = when (versionStage) {
     "release" -> versionBase
     "beta" -> "$versionBase-beta.${versionProperty("betaNumber")}"
@@ -255,9 +262,11 @@ android {
         debug {
             buildConfigField("String", "RIBKA_FUNCTIONS_HOST", "\"$ribkaFunctionsHostDebug\"")
             buildConfigField("boolean", "SKIP_FCM_REGISTRATION", "true")
+            buildConfigField("boolean", "DAILY_VERSE_FAST_ROTATION", dailyVerseFastRotation)
         }
         release {
             buildConfigField("boolean", "SKIP_FCM_REGISTRATION", "false")
+            buildConfigField("boolean", "DAILY_VERSE_FAST_ROTATION", "false")
             ndk {
                 debugSymbolLevel = "SYMBOL_TABLE"
             }

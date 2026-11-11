@@ -162,6 +162,7 @@ Environment variables:
 - `SIGN_SABDA_KEYSTORE`, `SIGN_SABDA_ALIAS`, `SIGN_SABDA_PASSWORD` — required to sign release builds of `sabda_alkitab`. See "Signing keys" below.
 - `BUILD_DIST` — distribution channel identifier embedded in the APK filename. Defaults to `dev` when unset.
 - `VERSION_STAGE` — `dev` (default), `beta`, or `release`; picks how `versionName` is assembled. `-PversionStage=` does the same and wins if both are given. See "Versioning" above.
+- `-PdailyVerseFastRotation` — `true` (default) or `false`. Debug builds pick a new daily verse for the widget every 15 seconds so changes to it are quick to check; `false` keeps one verse per day. Release builds always do that.
 - `VERSION_CODE` — pins `versionCode` instead of deriving it from the clock, so a rebuild of the same commit produces the same number. The release workflow sets it once per run.
 
 What the Gradle build does:

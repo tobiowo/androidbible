@@ -71,7 +71,7 @@ object DailyVerseData {
         val calendar = GregorianCalendar.getInstance()
         val year = calendar.get(Calendar.YEAR).toLong()
         val day = calendar.get(Calendar.DAY_OF_YEAR).toLong()
-        val fifteenSecs = if (BuildConfig.DEBUG) {
+        val fifteenSecs = if (BuildConfig.DAILY_VERSE_FAST_ROTATION) {
             calendar.get(Calendar.HOUR_OF_DAY) * 240 + calendar.get(Calendar.MINUTE) * 4 + calendar.get(Calendar.SECOND) / 15
         } else {
             0

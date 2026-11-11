@@ -39,6 +39,8 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assemblePlainDebug \
+            -PversionStage=release \
+            -PdailyVerseFastRotation=false \
             -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/.github/fork-debug.keystore" \
             -Pandroid.injected.signing.store.password=android \
             -Pandroid.injected.signing.key.alias=androiddebugkey \
